@@ -1,4 +1,6 @@
-<!-- <?php
+<?php
+// Include authentication check - redirects if not logged in
+require_once 'auth_check.php';
 include "config.php";
 
 $id = $_GET["id"];

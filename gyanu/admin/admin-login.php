@@ -2,22 +2,89 @@
 session_start();
 include "admin-config.php";
 
-if($_SERVER["REQUEST_METHOD"]=="POST"){
+$msg = "";
+$msg_type = "";
+$max_attempts = 5;
+$lockout_time = 900; // 15 minutes
 
-    $username = $_POST["username"];
-    $password = $_POST["password"];
+// If already logged in as admin, redirect to dashboard
+if (isset($_SESSION['admin']) && !empty($_SESSION['admin'])) {
+    header("Location: admin-dashboard.php");
+    exit;
+}
 
-    $sql = "SELECT * FROM admins WHERE username=?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s",$username);
-    $stmt->execute();
-    $result = $stmt->get_result();
+// Generate CSRF token
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
-    if($row = $result->fetch_assoc()){
-        if(hash("sha256",$password) == $row["password"]){
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // Verify CSRF token
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $msg = "Security token validation failed. Please try again.";
+        $msg_type = "error";
+    } else {
+        $username = trim($_POST['username'] ?? '');
+        $password = $_POST['password'] ?? '';
 
-            $_SESSION["admin"] = $row["username"];
-            header("Location: admin-dashboard.php");
+        // Rate limiting check
+        $attempt_key = "admin_login_attempts_" . $_SERVER['REMOTE_ADDR'];
+        $attempts = $_SESSION[$attempt_key] ?? 0;
+        $last_attempt = $_SESSION[$attempt_key . "_time"] ?? 0;
+
+        // Reset attempts if lockout period has passed
+        if (time() - $last_attempt > $lockout_time) {
+            $attempts = 0;
+        }
+
+        if ($attempts >= $max_attempts) {
+            $remaining_time = $lockout_time - (time() - $last_attempt);
+            $msg = "Too many login attempts. Please try again in " . ceil($remaining_time / 60) . " minutes.";
+            $msg_type = "error";
+        } elseif (empty($username) || empty($password)) {
+            $msg = "Username and password are required.";
+            $msg_type = "error";
+        } else {
+            $sql = "SELECT * FROM admins WHERE username=?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("s", $username);
+            $stmt->execute();
+            $result = $stmt->get_result();
+
+            if ($row = $result->fetch_assoc()) {
+                // Use password_verify for security (update DB with hashed passwords)
+                // For now checking with hash for backward compatibility
+                if (hash("sha256", $password) == $row["password"]) {
+                    // Successful login
+                    session_regenerate_id(true);
+                    $_SESSION["admin"] = $row["username"];
+                    $_SESSION['admin_id'] = $row['id'] ?? null;
+                    $_SESSION['last_activity'] = time();
+                    $_SESSION['login_time'] = time();
+
+                    // Clear failed attempts
+                    unset($_SESSION[$attempt_key]);
+                    unset($_SESSION[$attempt_key . "_time"]);
+
+                    header("Location: admin-dashboard.php");
+                    exit;
+                } else {
+                    $msg = "Invalid username or password.";
+                    $msg_type = "error";
+                    $_SESSION[$attempt_key] = $attempts + 1;
+                    $_SESSION[$attempt_key . "_time"] = time();
+                }
+            } else {
+                $msg = "Invalid username or password.";
+                $msg_type = "error";
+                $_SESSION[$attempt_key] = $attempts + 1;
+                $_SESSION[$attempt_key . "_time"] = time();
+            }
+
+            $stmt->close();
+        }
+    }
+}
             exit;
         }
     }

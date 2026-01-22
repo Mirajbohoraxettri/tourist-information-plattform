@@ -3,45 +3,96 @@ session_start();
 include "config.php";
 
 $msg = "";
+$msg_type = ""; // "error" or "success"
+$max_attempts = 5;
+$lockout_time = 900; // 15 minutes
+$user_ip = $_SERVER['REMOTE_ADDR'];
 
+// Check if user is already logged in
+if (isset($_SESSION['user_id']) && !empty($_SESSION['user_id'])) {
+    header("Location: mainpage.php");
+    exit;
+}
+
+// Generate CSRF token
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+// Handle login attempts
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    $email = trim($_POST['email']);
-    $password = $_POST['password'];
-
-    // Basic validation
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $msg = "Invalid email format.";
+    // Verify CSRF token
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $msg = "Security token validation failed. Please try again.";
+        $msg_type = "error";
     } else {
+        $email = trim($_POST['email'] ?? '');
+        $password = $_POST['password'] ?? '';
 
-        $stmt = $conn->prepare("SELECT id, fullname, password FROM users WHERE email = ?");
-        $stmt->bind_param("s", $email);
-        $stmt->execute();
-        $stmt->store_result();
+        // Rate limiting: check failed login attempts
+        $attempt_key = "login_attempts_" . $user_ip;
+        $attempts = $_SESSION[$attempt_key] ?? 0;
+        $last_attempt = $_SESSION[$attempt_key . "_time"] ?? 0;
 
-        // user must exist
-        if ($stmt->num_rows === 1) {
-            $stmt->bind_result($id, $fullname, $hash);
-            $stmt->fetch();
-
-            if (password_verify($password, $hash)) {
-
-                session_regenerate_id(true);
-                $_SESSION["user_id"] = $id;
-                $_SESSION["user_name"] = $fullname;
-
-                header("Location: homepage.html");
-                exit;
-
-            } else {
-                $msg = "Incorrect password.";
-            }
-
-        } else {
-            $msg = "No account found with this email.";
+        // Reset attempts if lockout period has passed
+        if (time() - $last_attempt > $lockout_time) {
+            $attempts = 0;
         }
 
-        $stmt->close();
+        if ($attempts >= $max_attempts) {
+            $remaining_time = $lockout_time - (time() - $last_attempt);
+            $msg = "Too many login attempts. Please try again in " . ceil($remaining_time / 60) . " minutes.";
+            $msg_type = "error";
+        } elseif (empty($email) || empty($password)) {
+            $msg = "Email and password are required.";
+            $msg_type = "error";
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $msg = "Invalid email format.";
+            $msg_type = "error";
+            $_SESSION[$attempt_key] = $attempts + 1;
+            $_SESSION[$attempt_key . "_time"] = time();
+        } else {
+            $stmt = $conn->prepare("SELECT id, fullname, password FROM users WHERE email = ?");
+            $stmt->bind_param("s", $email);
+            $stmt->execute();
+            $stmt->store_result();
+
+            if ($stmt->num_rows === 1) {
+                $stmt->bind_result($id, $fullname, $hash);
+                $stmt->fetch();
+
+                if (password_verify($password, $hash)) {
+                    // Successful login
+                    session_regenerate_id(true);
+                    $_SESSION["user_id"] = $id;
+                    $_SESSION["user_name"] = $fullname;
+                    $_SESSION["user_email"] = $email;
+                    $_SESSION['last_activity'] = time();
+                    $_SESSION['login_time'] = time();
+
+                    // Clear failed attempts
+                    unset($_SESSION[$attempt_key]);
+                    unset($_SESSION[$attempt_key . "_time"]);
+
+                    // Redirect to intended page or mainpage
+                    $redirect = $_GET['redirect'] ?? 'mainpage.php';
+                    header("Location: " . $redirect);
+                    exit;
+                } else {
+                    $msg = "Incorrect password.";
+                    $msg_type = "error";
+                    $_SESSION[$attempt_key] = $attempts + 1;
+                    $_SESSION[$attempt_key . "_time"] = time();
+                }
+            } else {
+                $msg = "No account found with this email.";
+                $msg_type = "error";
+                $_SESSION[$attempt_key] = $attempts + 1;
+                $_SESSION[$attempt_key . "_time"] = time();
+            }
+
+            $stmt->close();
+        }
     }
 }
 ?>
@@ -180,8 +231,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       background: rgba(255, 255, 255, 0.15);
       -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
+    }
     
+    .alert {
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+    }
     
+    .alert-error {
+      background-color: #fee;
+      color: #c33;
+      border-left: 4px solid #c33;
+    }
+    
+    .alert-success {
+      background-color: #efe;
+      color: #3c3;
+      border-left: 4px solid #3c3;
     }
   </style>
 </head>
@@ -190,7 +259,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <h1>Sign in</h1>
     <p class="subtitle">Sign in below to access your account</p>
 
-    <form action="" method="post"  id="signinForm" autocomplete="on" novalidate>
+    <?php if (!empty($msg)): ?>
+      <div class="alert alert-<?php echo htmlspecialchars($msg_type); ?>">
+        <?php echo htmlspecialchars($msg); ?>
+      </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['expired'])): ?>
+      <div class="alert alert-error">
+        Your session has expired. Please sign in again.
+      </div>
+    <?php endif; ?>
+
+    <form action="" method="post" id="signinForm" autocomplete="on" novalidate>
+      <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+      
       <div class="field">
         <label for="email">Email Address</label>
         <input id="email" name="email" type="email" placeholder="you@example.com" required>
@@ -203,10 +286,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <button type="button" class="toggle-btn" id="toggle">Show</button>
         </div>
       </div>
-      <button class="btn" type="submit" ><a href="mainpage.php">Signin</a></button>
+      <button class="btn" type="submit">Sign in</button>
     </form>
 
-    <p class="footer">Don't have an account yet? <a href="register.php">Sign up</a>  .</p>
+    <p class="footer">Don't have an account yet? <a href="register.php">Sign up</a>.</p>
   </main>
 
   <script>

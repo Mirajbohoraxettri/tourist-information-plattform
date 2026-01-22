@@ -1,11 +1,27 @@
 <?php
 session_start();
 
-// block access if admin not logged in
-if(!isset($_SESSION["admin"])) {
+// Check for session timeout (30 minutes of inactivity)
+$timeout_duration = 1800; // 30 minutes in seconds
+if (isset($_SESSION['last_activity'])) {
+    $elapsed = time() - $_SESSION['last_activity'];
+    if ($elapsed > $timeout_duration) {
+        // Session expired
+        $_SESSION = [];
+        session_destroy();
+        header('Location: admin-login.php?expired=1');
+        exit;
+    }
+}
+
+// Block access if admin not logged in
+if (!isset($_SESSION["admin"]) || empty($_SESSION["admin"])) {
     header("Location: admin-login.php");
     exit;
 }
+
+// Update last activity time
+$_SESSION['last_activity'] = time();
 
 // DB Connection
 include "admin-config.php";

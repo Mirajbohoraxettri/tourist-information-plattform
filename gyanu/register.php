@@ -1,69 +1,87 @@
 <?php
+session_start();
 include "config.php";
 
 $msg = "";
+$msg_type = ""; // "error" or "success"
+
+// If already logged in, redirect to mainpage
+if (isset($_SESSION['user_id']) && !empty($_SESSION['user_id'])) {
+    header("Location: mainpage.php");
+    exit;
+}
+
+// Generate CSRF token
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // Verify CSRF token
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $msg = "Security token validation failed. Please try again.";
+        $msg_type = "error";
+    } else {
+        $fullname = trim($_POST['fullname'] ?? '');
+        $email    = trim($_POST['email'] ?? '');
+        $password = $_POST['password'] ?? '';
+        $confirm  = $_POST['confirm'] ?? '';
 
-    $fullname = trim($_POST['fullname']);
-    $email    = trim($_POST['email']);
-    $password = $_POST['password'];
-    $confirm  = $_POST['confirm'];
-
-    if (empty($fullname) || empty($email) || empty($password) || empty($confirm)) {
-        $msg = "All fields are required!";
-    }
-
-  
-    elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $msg = "Invalid email format!";
-    }
-
-
-    elseif (!preg_match("/^[A-Za-z][A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/", $email)) {
-        $msg = "Email must start with a letter and contain alphabets.";
-    }
-
-    elseif (!preg_match("/^[A-Za-z][A-Za-z0-9._%+-]{2,}@/", $email)) {
-        $msg = "Email username is too short.";
-    }
-
-    elseif ($password !== $confirm) {
-        $msg = "Passwords do not match!";
-    }
-
-    else {
-
-        $check = $conn->prepare("SELECT id FROM users WHERE email = ?");
-        $check->bind_param("s", $email);
-        $check->execute();
-        $check->store_result();
-
-        if ($check->num_rows > 0) {
-            $msg = "Email already registered!";
+        if (empty($fullname) || empty($email) || empty($password) || empty($confirm)) {
+            $msg = "All fields are required!";
+            $msg_type = "error";
         }
-
+        elseif (strlen($fullname) < 2) {
+            $msg = "Full name must be at least 2 characters!";
+            $msg_type = "error";
+        }
+        elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $msg = "Invalid email format!";
+            $msg_type = "error";
+        }
+        elseif (!preg_match("/^[A-Za-z][A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/", $email)) {
+            $msg = "Email must start with a letter and contain valid format.";
+            $msg_type = "error";
+        }
+        elseif (strlen($password) < 8) {
+            $msg = "Password must be at least 8 characters!";
+            $msg_type = "error";
+        }
+        elseif ($password !== $confirm) {
+            $msg = "Passwords do not match!";
+            $msg_type = "error";
+        }
         else {
+            $check = $conn->prepare("SELECT id FROM users WHERE email = ?");
+            $check->bind_param("s", $email);
+            $check->execute();
+            $check->store_result();
 
-            // ================================
-            // INSERT USER
-            // ================================
-            $hashed = password_hash($password, PASSWORD_DEFAULT);
+            if ($check->num_rows > 0) {
+                $msg = "Email already registered!";
+                $msg_type = "error";
+            }
+            else {
+                // Hash password with strong algorithm
+                $hashed = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
 
-            $sql = "INSERT INTO users (fullname, email, password) VALUES (?, ?, ?)";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("sss", $fullname, $email, $hashed);
+                $sql = "INSERT INTO users (fullname, email, password) VALUES (?, ?, ?)";
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param("sss", $fullname, $email, $hashed);
 
-            if ($stmt->execute()) {
-                $msg = "Account created successfully!";
-            } else {
-                $msg = "Database error. Try again later.";
+                if ($stmt->execute()) {
+                    $msg = "Account created successfully! Please sign in.";
+                    $msg_type = "success";
+                } else {
+                    $msg = "Database error. Try again later.";
+                    $msg_type = "error";
+                }
+
+                $stmt->close();
             }
 
-            $stmt->close();
+            $check->close();
         }
-
-        $check->close();
     }
 }
 ?>
@@ -130,8 +148,9 @@ input:focus{
 .btn{margin-top:6px;background:#0b0b0b;color:#fff;border:0;padding:14px 18px;border-radius:8px;font-size:16px;cursor:pointer;box-shadow:0 6px 18px rgba(11,11,11,0.08);}
 .footer{text-align:center;margin-top:18px;color:var(--muted);font-size:14px;}
 .footer a{color:#111827;font-weight:600;text-decoration:none;}
-.success{color:green;text-align:center;margin-bottom:15px;font-weight:600;}
-.error{color:red;text-align:center;margin-bottom:15px;font-weight:600;}
+.alert{padding:12px 14px;margin-bottom:16px;border-radius:6px;font-size:14px;font-weight:500;}
+.alert-error{background-color:#fee;color:#c33;border-left:4px solid #c33;}
+.alert-success{background-color:#efe;color:#3c3;border-left:4px solid #3c3;}
 @media (max-width:420px){.card{padding:26px;border-radius:12px;} h1{font-size:26px;}}
 </style>
 </head>
@@ -143,15 +162,13 @@ input:focus{
 
   <?php
     if (!empty($msg)) {
-        if ($msg == "Account created successfully!") {
-            echo "<p class='success'>$msg</p>";
-        } else {
-            echo "<p class='error'>$msg</p>";
-        }
+        echo "<p class='alert alert-" . htmlspecialchars($msg_type) . "'>" . htmlspecialchars($msg) . "</p>";
     }
   ?>
 
   <form action="" method="post" id="signupForm" autocomplete="on">
+    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+    
     <div class="field">
       <label for="fullname">Full Name</label>
       <input id="fullname" name="fullname" type="text" placeholder="Your full name" required>
@@ -165,7 +182,7 @@ input:focus{
     <div class="field">
       <label for="password">Password</label>
       <div class="password-row">
-        <input id="password" name="password" type="password" placeholder="Create password" required>
+        <input id="password" name="password" type="password" placeholder="Minimum 8 characters" required>
         <button type="button" class="toggle-btn" id="toggle">Show</button>
       </div>
     </div>

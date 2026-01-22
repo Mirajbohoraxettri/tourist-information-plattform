@@ -1,3 +1,7 @@
+<?php
+// Include authentication check - redirects if not logged in
+require_once 'auth_check.php';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>

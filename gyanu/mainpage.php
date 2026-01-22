@@ -1,4 +1,6 @@
 <?php
+// Include authentication check - redirects if not logged in
+require_once 'auth_check.php';
 include "admin/admin-config.php";
 
 // Fetch latest 4 destinations

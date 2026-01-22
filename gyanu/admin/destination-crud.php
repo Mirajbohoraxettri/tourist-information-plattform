@@ -1,5 +1,12 @@
 <?php
 session_start();
+
+// Block access if admin not logged in
+if (!isset($_SESSION['admin']) || empty($_SESSION['admin'])) {
+    header('Location: admin-login.php');
+    exit;
+}
+
 include "admin-config.php";
 
 $result = $conn->query("SELECT * FROM destinations ORDER BY id DESC");

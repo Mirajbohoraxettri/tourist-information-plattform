@@ -1,41 +1,13 @@
 <?php
 // Include authentication check - redirects if not logged in
 require_once 'auth_check.php';
-include "config.php";
-
-$msg = "";
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-	$user_name = trim($_POST['name'] ?? '');
-	$email = trim($_POST['email'] ?? '');
-	$message = trim($_POST['feedbk'] ?? '');
-
-	if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-		echo "Invalid email address.";
-	} else {
-		$stmt = $conn->prepare("INSERT INTO feedbacks (user_name, email, message) VALUES (?, ?, ?)");
-		if (!$stmt) {
-			echo "DB error: " . htmlspecialchars($conn->error);
-		} else {
-			$stmt->bind_param('sss', $user_name, $email, $message);
-			if ($stmt->execute()) {
-				echo "Thanks for feedback!";
-			} else {
-				echo "Failed: " . htmlspecialchars($stmt->error);
-			}
-			$stmt->close();
-		}
-	}
-}
 ?>
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Feedback Form</title>
-	<link rel="stylesheet" type="text/css" href="./css/feedback.css">
+	<link rel="stylesheet" type="text/css" href="css/gallery.css">
+	<title>Gallery</title>
 
 	<style>
 	/* ===== HEADER STYLES ===== */
@@ -303,10 +275,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			<!-- Logo + Search (Same Line) -->
 			<ul class="list">
 				<li class="logo">
-					<a href="mainPage.php">
+					<a href="mainpage.php">
 						<img src="./images/logo/logo.png" alt="Logo">
 					</a>
-					<form method="POST" action="search.php" class="search-box">
+					<form method="GET" action="search.php" class="search-box">
 						<input type="text" name="query" placeholder="Search..." required>
 						<button type="submit">🔍</button>
 					</form>
@@ -315,33 +287,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 			<!-- Menu -->
 			<ul class="list2">
-				<li><a href="mainPage.php">Home</a></li>
+				<li><a href="mainpage.php">Home</a></li>
 				<li><a href="destination.php">Destination</a></li>
-				<li><a href="gallery.html">Gallery</a></li>
-				<li class="active-menu"><a href="feedback.php">Feedback</a></li>
+				<li class="active-menu"><a href="gallery.php">Gallery</a></li>
+				<li><a href="feedback.php">Feedback</a></li>
 				<li><a href="logout.php">Logout</a></li>
 			</ul>
 		</div>
 	</header>
-	<div class="feedback">
-		<h1>Feedback Form</h1>
-		<form name='feedbackForm' method="POST" action="feedback.php">
-			<div class="form-group">
-			    <label>Your Name</label>
-			    <input type="text" name="name" class="form-control" id="inputText" placeholder="Your Name" required>
+	<h1>Gallery</h1>
+	<div class="container container1">
+		<h2> POKHARA</h2>
+		<div class="box box1">
+			<div class="imgBox">
+			  <img src="./images/destination/pokhara.jpg" alt="Pokhara Image" style="width: auto;height: 270px;">
 			</div>
-			<div class="form-group">
-			    <label>Your Email</label>
-			    <input type="email" name="email" class="form-control" id="inputEmail" placeholder="Your Email" required>
+		</div>
+		<div class="box">
+			<div class="imgBox">
+			  <img src="./images/destination/fewalake.jpg" alt="Fewa Lake Image" style="width: auto;height: 270px;">
 			</div>
-			<div class="form-group text1">
-			    <label>Feedback:</label>
-			    <textarea class="inputTextarea" name="feedbk" rows="4" class="form-control" ng-model='feedback' placeholder="Please write your Feedback here" required></textarea>
+		</div>
+		<div class="box">
+			<div class="imgBox">
+			  <img src="images/destination/pum.jpg" alt="PUM Image" style="width: auto;height: 270px;">
 			</div>
-			<div class="wrapper">
-				<button type="submit" class="btn btn-primary" ng-click="performValidation()" name='submit'>Submit Feedback</button>
+		</div>
+		<div class="box">
+			<div class="imgBox">
+			  <img src="images/destination/sarangkot.jpg" alt="Sarangkot Image" style="width: auto;height: 270px;">
 			</div>
-		</form>
+		</div>
 	</div>
+
+	<div class="container container2">
+		<h2>KATHMANDU</h2>
+		<div class="box box1">
+			<div class="imgBox">
+			  <img src="images/destination/kathmadu.jpg" alt="Kathmandu Image" style="width: auto;height: 270px;">
+			</div>
+		</div>
+		<div class="box">
+			<div class="imgBox">
+			  <img src="images/destination/Kathmandu Durbar Square.jpg" alt="Kathmandu Durbar Square" style="width: auto;height: 270px;">
+			</div>
+		</div>
+		<div class="box">
+			<div class="imgBox">
+			  <img src="images/destination/pasupatinath.jpg" alt="Pashupatinath Image" style="width: auto;height: 270px;">
+			</div>
+		</div>
+	</div>
+
+	<div class="container container4">
+		<h2>LUMBINI</h2>
+		<div class="box box1">
+			<div class="imgBox">
+			  <img src="images/destination/lumbini1.jpg" alt="Lumbini Image" style="width: auto;height: 270px;">
+			</div>
+		</div>
+		<div class="box">
+			<div class="imgBox">
+			  <img src="images/destination/lumbini2.jpg" alt="Lumbini Image" style="width: auto;height: 270px;">
+			</div>
+		</div>
+	</div>
+
 </body>
 </html>
